@@ -1,7 +1,23 @@
 import cv2
 import mediapipe as mp
-import pyautogui
+
+
 import os
+
+# Check if we're running in a headless (no GUI) environment
+HEADLESS = os.environ.get("DISPLAY") is None
+
+if not HEADLESS:
+    import pyautogui
+    pyautogui.FAILSAFE = False
+else:
+    print("⚠ Running in headless mode — PyAutoGUI disabled.")
+    class MockPyAutoGUI:
+        def press(self, *a, **kw): print(f"Mock press: {a}")
+        def hotkey(self, *a, **kw): print(f"Mock hotkey: {a}")
+    pyautogui = MockPyAutoGUI()
+
+
 import time
 import platform
 import subprocess
