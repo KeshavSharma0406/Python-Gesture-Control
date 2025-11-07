@@ -15,7 +15,7 @@ try:
 except ImportError:
     import sys
     subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
-    import cv2
+    
 
 # =========================================================
 # Safe Mediapipe Import
