@@ -1,4 +1,4 @@
-import cv2 from opencv-python-headless
+
 import mediapipe as mp
 import streamlit as st
 import numpy as np
