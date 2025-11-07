@@ -1,5 +1,4 @@
-opencv-python-headless==4.10.0.84
-mediapipe==0.10.14
-numpy
 streamlit
-pyautogui
+streamlit-webrtc
+opencv-python-headless
+mediapipe
