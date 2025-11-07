@@ -1,102 +1,52 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import cv2
 import mediapipe as mp
-import numpy as np
-import time
-from collections import deque
-from statistics import mode
-import os
-import platform
-import subprocess
 
-# =========================================================
-# Handle pyautogui safely (for local use)
-# =========================================================
-HEADLESS = os.environ.get("DISPLAY") is None
-if not HEADLESS:
-    try:
-        import pyautogui
-        pyautogui.FAILSAFE = False
-    except ImportError:
-        pyautogui = None
-else:
-    class MockPyAutoGUI:
-        def press(self, *args, **kwargs): print(f"[Mock] press {args}")
-        def hotkey(self, *args, **kwargs): print(f"[Mock] hotkey {args}")
-    pyautogui = MockPyAutoGUI()
-    st.warning("⚠ Running in headless mode — system actions disabled.")
+st.set_page_config(page_title="🖐 Gesture Recognition Demo", layout="centered")
+st.title("🖐 Real-Time Hand Gesture Recognition (WebRTC)")
 
-# =========================================================
-# Mediapipe Hands
-# =========================================================
+# Initialize Mediapipe
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(
-    max_num_hands=1,
-    min_detection_confidence=0.8,
-    min_tracking_confidence=0.8
-)
 mp_draw = mp.solutions.drawing_utils
 
-# =========================================================
-# Streamlit UI
-# =========================================================
-st.set_page_config(page_title="🖐 Gesture Controller (Cloud Mode)", layout="wide")
-st.title("🖐 Hand Gesture Control — Streamlit Cloud Safe Mode")
 
-run = st.checkbox("Start Demo", value=False)
-frame_window = st.image([])
+# Define a custom video transformer class
+class HandGestureTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.hands = mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.7,
+            min_tracking_confidence=0.5
+        )
 
-landmark_history = deque(maxlen=5)
-gesture_history = deque(maxlen=8)
-COOLDOWN_TIME = 1.0
-last_action_time = 0
+    def transform(self, frame):
+        # Convert the incoming video frame to a numpy array
+        img = frame.to_ndarray(format="bgr24")
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        result = self.hands.process(img_rgb)
 
-# =========================================================
-# Helper functions
-# =========================================================
-def perform_action(gesture):
-    print(f"🖐 Gesture Detected: {gesture}")
-    if pyautogui is None:
-        return
-    if gesture == "OPEN_PALM":
-        pyautogui.press("volumemute")
-    elif gesture == "THUMBS_UP":
-        pyautogui.press("volumeup")
-    elif gesture == "THUMBS_DOWN":
-        pyautogui.press("volumedown")
+        # Draw landmarks
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                mp_draw.draw_landmarks(img, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-def stable_gesture(current_gesture):
-    gesture_history.append(current_gesture)
-    try:
-        dominant = mode(gesture_history)
-    except:
-        dominant = current_gesture
-    confidence = gesture_history.count(dominant) / len(gesture_history)
-    if confidence > 0.6:
-        return dominant, confidence
-    return "UNKNOWN", confidence
+        # Flip horizontally for better UX
+        img = cv2.flip(img, 1)
+        return img
 
-# =========================================================
-# Fake "demo" hand feed using a placeholder image
-# =========================================================
-if run:
-    st.info("🖐 Running demo mode — no webcam available on Streamlit Cloud.")
-    placeholder = np.zeros((360, 480, 3), dtype=np.uint8)
-    color = (255, 255, 255)
 
-    demo_gestures = ["OPEN_PALM", "FIST", "THUMBS_UP", "THUMBS_DOWN", "UNKNOWN"]
-    idx = 0
-    while run:
-        # Simulate rotating gestures every few seconds
-        gesture = demo_gestures[idx % len(demo_gestures)]
-        idx += 1
+# Stream the webcam feed via browser
+webrtc_streamer(
+    key="gesture-demo",
+    video_transformer_factory=HandGestureTransformer,
+    media_stream_constraints={"video": True, "audio": False},
+)
 
-        placeholder[:] = (0, 0, 0)
-        text = f"Gesture: {gesture}"
-        # Draw text manually
-        import cv2
-        cv2.putText(placeholder, text, (40, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.3, color, 2)
-        cv2.putText(placeholder, "Demo Mode (no webcam)", (40, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1)
-        frame_window.image(placeholder)
-        time.sleep(1.5)
-else:
-    st.write("👋 Click 'Start Demo' to see simulated gesture control.")
+st.markdown("""
+### ✋ Instructions:
+- Allow webcam access when prompted.
+- Move your hand in front of the camera — landmarks will appear in real time.
+- This works fully in your browser — no installation needed.
+""")
