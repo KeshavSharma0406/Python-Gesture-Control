@@ -1,5 +1,3 @@
-import cv2
-import mediapipe as mp
 import streamlit as st
 import numpy as np
 import os
@@ -10,15 +8,41 @@ from collections import deque
 from statistics import mode
 
 # =========================================================
+# Safe OpenCV Import (headless-compatible)
+# =========================================================
+try:
+    import cv2
+except ImportError:
+    import sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
+
+# =========================================================
+# Safe Mediapipe Import
+# =========================================================
+try:
+    import mediapipe as mp
+except ImportError:
+    import sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "mediapipe"])
+    import mediapipe as mp
+
+# =========================================================
 # Handle headless (no DISPLAY) environments safely
 # =========================================================
 HEADLESS = os.environ.get("DISPLAY") is None
 
 if not HEADLESS:
-    import pyautogui
-    pyautogui.FAILSAFE = False
+    try:
+        import pyautogui
+        pyautogui.FAILSAFE = False
+    except ImportError:
+        import sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyautogui"])
+        import pyautogui
+        pyautogui.FAILSAFE = False
 else:
-    # Mock pyautogui to avoid crashes
+    # Mock pyautogui in Streamlit Cloud
     class MockPyAutoGUI:
         def press(self, *args, **kwargs): print(f"[Mock] press {args}")
         def hotkey(self, *args, **kwargs): print(f"[Mock] hotkey {args}")
@@ -48,14 +72,16 @@ frame_window = st.image([])
 # =========================================================
 # Initialize Webcam
 # =========================================================
-cap = cv2.VideoCapture(0)
+system = platform.system()
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if system == "Windows" else 0)
+
+if not cap.isOpened():
+    st.error("❌ Webcam not accessible in this environment (likely headless).")
 
 landmark_history = deque(maxlen=5)
 gesture_history = deque(maxlen=8)
 last_action_time = 0
-system = platform.system()
 COOLDOWN_TIME = 1.0
-
 
 # =========================================================
 # Helper Functions
@@ -173,49 +199,51 @@ def stable_gesture(current_gesture):
         return dominant, confidence
     return "UNKNOWN", confidence
 
-
 # =========================================================
 # Main Streamlit Loop
 # =========================================================
 if run:
-    st.info("🖐 Raise your hand to start gesture detection!")
-    while run:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("❌ Could not access webcam.")
-            break
+    if not cap.isOpened():
+        st.error("❌ Webcam not accessible. Running in headless mode.")
+    else:
+        st.info("🖐 Raise your hand to start gesture detection!")
+        while run:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("❌ Could not access webcam.")
+                break
 
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = hands.process(rgb)
-        h, w, _ = frame.shape
-        gesture = "NONE"
-        confidence = 0
-        fingers = []
+            frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = hands.process(rgb)
+            h, w, _ = frame.shape
+            gesture = "NONE"
+            confidence = 0
+            fingers = []
 
-        if result.multi_hand_landmarks:
-            for hand_landmarks in result.multi_hand_landmarks:
-                smoothed = smooth_landmarks(hand_landmarks)
-                detected, fingers = detect_gesture(smoothed, w, h)
-                gesture, confidence = stable_gesture(detected)
-                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            if result.multi_hand_landmarks:
+                for hand_landmarks in result.multi_hand_landmarks:
+                    smoothed = smooth_landmarks(hand_landmarks)
+                    detected, fingers = detect_gesture(smoothed, w, h)
+                    gesture, confidence = stable_gesture(detected)
+                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-        current_time = time.time()
-        if gesture not in ["UNKNOWN", "NONE"]:
-            if current_time - last_action_time > COOLDOWN_TIME:
-                perform_action(gesture)
-                last_action_time = current_time
+            current_time = time.time()
+            if gesture not in ["UNKNOWN", "NONE"]:
+                if current_time - last_action_time > COOLDOWN_TIME:
+                    perform_action(gesture)
+                    last_action_time = current_time
 
-        color = (0, 255, 0) if confidence > 0.6 else (0, 255, 255)
-        cv2.rectangle(frame, (10, 10), (420, 140), (0, 0, 0), -1)
-        cv2.putText(frame, f"Gesture: {gesture}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
-        cv2.putText(frame, f"Confidence: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        if fingers:
-            cv2.putText(frame, f"Fingers Up: {sum(fingers)}", (20, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            color = (0, 255, 0) if confidence > 0.6 else (0, 255, 255)
+            cv2.rectangle(frame, (10, 10), (420, 140), (0, 0, 0), -1)
+            cv2.putText(frame, f"Gesture: {gesture}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
+            cv2.putText(frame, f"Confidence: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            if fingers:
+                cv2.putText(frame, f"Fingers Up: {sum(fingers)}", (20, 120),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
-        frame_window.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            frame_window.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
-    cap.release()
+        cap.release()
 else:
     st.write("👋 Click the checkbox to start gesture detection.")
