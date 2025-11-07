@@ -1,3 +1,5 @@
+import cv2  # from opencv-python-headless
+import mediapipe as mp
 import streamlit as st
 import numpy as np
 import os
@@ -6,26 +8,6 @@ import platform
 import subprocess
 from collections import deque
 from statistics import mode
-
-# =========================================================
-# Safe OpenCV Import (headless-compatible)
-# =========================================================
-try:
-    import cv2
-except ImportError:
-    import sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
-    import cv2
-
-# =========================================================
-# Safe Mediapipe Import
-# =========================================================
-try:
-    import mediapipe as mp
-except ImportError:
-    import sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "mediapipe"])
-    import mediapipe as mp
 
 # =========================================================
 # Handle headless (no DISPLAY) environments safely
@@ -37,12 +19,10 @@ if not HEADLESS:
         import pyautogui
         pyautogui.FAILSAFE = False
     except ImportError:
-        import sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyautogui"])
-        import pyautogui
-        pyautogui.FAILSAFE = False
+        st.warning("⚠ PyAutoGUI not available. Some actions disabled.")
+        pyautogui = None
 else:
-    # Mock pyautogui in Streamlit Cloud
+    # Mock pyautogui for Streamlit Cloud (headless)
     class MockPyAutoGUI:
         def press(self, *args, **kwargs): print(f"[Mock] press {args}")
         def hotkey(self, *args, **kwargs): print(f"[Mock] hotkey {args}")
@@ -89,6 +69,10 @@ COOLDOWN_TIME = 1.0
 def perform_action(gesture):
     """Perform or simulate system action based on gesture."""
     print(f"\n🖐 Gesture Detected: {gesture}")
+
+    if pyautogui is None:
+        print("PyAutoGUI not available. Skipping action.")
+        return
 
     if gesture == "OPEN_PALM":
         pyautogui.press("volumemute")
