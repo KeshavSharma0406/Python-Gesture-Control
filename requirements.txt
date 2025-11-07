@@ -1,5 +1,6 @@
 opencv-python-headless
 mediapipe
-pyautogui
-numpy
 streamlit
+numpy
+PyTweening
+pyscreeze
