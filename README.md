@@ -1,2 +1,0 @@
-# Python Gesture Control
-
