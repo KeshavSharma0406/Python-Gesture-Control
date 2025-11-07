@@ -1,5 +1,5 @@
-import cv2  # from opencv-python-headless
-import mediapipe as mpim
+import cv2
+import mediapipe as mp
 import streamlit as st
 import numpy as np
 import os
@@ -22,7 +22,7 @@ if not HEADLESS:
         st.warning("⚠ PyAutoGUI not available. Some actions disabled.")
         pyautogui = None
 else:
-    # Mock pyautogui for Streamlit Cloud (headless)
+    # Mock pyautogui for headless environments like Streamlit Cloud
     class MockPyAutoGUI:
         def press(self, *args, **kwargs): print(f"[Mock] press {args}")
         def hotkey(self, *args, **kwargs): print(f"[Mock] hotkey {args}")
@@ -41,7 +41,7 @@ hands = mp_hands.Hands(
 mp_draw = mp.solutions.drawing_utils
 
 # =========================================================
-# Streamlit App Layout
+# Streamlit UI
 # =========================================================
 st.set_page_config(page_title="🖐 Gesture Controller", layout="wide")
 st.title("🖐 Real-Time Hand Gesture Control")
@@ -56,7 +56,7 @@ system = platform.system()
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if system == "Windows" else 0)
 
 if not cap.isOpened():
-    st.error("❌ Webcam not accessible in this environment (likely headless).")
+    st.error("❌ Webcam not accessible (headless or no camera detected).")
 
 landmark_history = deque(maxlen=5)
 gesture_history = deque(maxlen=8)
@@ -71,7 +71,7 @@ def perform_action(gesture):
     print(f"\n🖐 Gesture Detected: {gesture}")
 
     if pyautogui is None:
-        print("PyAutoGUI not available. Skipping action.")
+        print("PyAutoGUI not available — skipping action.")
         return
 
     if gesture == "OPEN_PALM":
@@ -83,7 +83,9 @@ def perform_action(gesture):
         if system == "Windows":
             os.system("rundll32.exe user32.dll,LockWorkStation")
         elif system == "Darwin":
-            subprocess.call(['/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession', '-suspend'])
+            subprocess.call([
+                '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession', '-suspend'
+            ])
         elif system == "Linux":
             os.system("gnome-screensaver-command -l")
 
@@ -116,37 +118,28 @@ def perform_action(gesture):
         pyautogui.hotkey("win", "prtsc")
         print("📸 Screenshot Taken")
 
-
 def smooth_landmarks(hand_landmarks):
     current = np.array([[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark])
     landmark_history.append(current)
     avg = np.mean(landmark_history, axis=0)
     return avg
 
-
 def fingers_up(landmarks):
     tips = [4, 8, 12, 16, 20]
     pips = [3, 6, 10, 14, 18]
     fingers = []
-
-    # Thumb (horizontal)
     fingers.append(landmarks[4][0] > landmarks[3][0])
-
-    # Other fingers (vertical)
     for tip, pip in zip(tips[1:], pips[1:]):
         fingers.append(landmarks[tip][1] < landmarks[pip][1])
     return fingers
 
-
 def detect_gesture(landmarks, img_w, img_h):
     f = fingers_up(landmarks)
     count = sum(f)
-
     wrist = landmarks[0][:2] * [img_w, img_h]
     index_tip = landmarks[8][:2] * [img_w, img_h]
     index_mcp = landmarks[5][:2] * [img_w, img_h]
     pinky_mcp = landmarks[17][:2] * [img_w, img_h]
-
     hand_dir = index_mcp[0] - pinky_mcp[0]
     finger_dir = index_tip[0] - wrist[0]
 
@@ -171,7 +164,6 @@ def detect_gesture(landmarks, img_w, img_h):
     else:
         return "UNKNOWN", f
 
-
 def stable_gesture(current_gesture):
     gesture_history.append(current_gesture)
     try:
@@ -184,7 +176,7 @@ def stable_gesture(current_gesture):
     return "UNKNOWN", confidence
 
 # =========================================================
-# Main Streamlit Loop
+# Main Loop
 # =========================================================
 if run:
     if not cap.isOpened():
