@@ -7,47 +7,26 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
 # =========================================================
-# Streamlit UI
+# Streamlit Setup
 # =========================================================
-st.set_page_config(page_title="🖐 Gesture Controller", layout="centered")
-st.title("🖐 Hand Gesture Detection (Cloud Demo Mode)")
+st.set_page_config(
+    page_title="🖐 Gesture Controller (Demo)",
+    layout="centered"
+)
+
+st.title("🖐 Hand Gesture Detection (Demo Mode)")
 
 st.markdown("""
-### ℹ️ Info
-- On **local machine** → Real gesture detection (MediaPipe)
-- On **Streamlit Cloud** → Hand detection demo (motion-based)
+### ℹ️ Note
+- Streamlit Cloud **cannot run MediaPipe**
+- This demo shows **camera-based hand movement detection**
+- Run locally to enable **real gesture recognition**
 """)
 
 # =========================================================
-# Environment Detection
+# Video Transformer (Motion-based detection)
 # =========================================================
-RUNNING_LOCALLY = (
-    platform.system() == "Windows"
-    or os.environ.get("DISPLAY") is not None
-)
-
-# =========================================================
-# Local MediaPipe Setup (only if local)
-# =========================================================
-if RUNNING_LOCALLY:
-    import mediapipe as mp
-
-    mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(
-        max_num_hands=1,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.7
-    )
-    mp_draw = mp.solutions.drawing_utils
-
-    st.success("🖥 Local Mode — Real gesture detection enabled")
-else:
-    st.warning("🌐 Cloud Mode — Gesture detection demo only")
-
-# =========================================================
-# Video Transformer
-# =========================================================
-class GestureDemo(VideoTransformerBase):
+class GestureDemoTransformer(VideoTransformerBase):
     def __init__(self):
         self.prev_gray = None
 
@@ -55,35 +34,6 @@ class GestureDemo(VideoTransformerBase):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
-        # =========================
-        # LOCAL: MediaPipe
-        # =========================
-        if RUNNING_LOCALLY:
-            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            result = hands.process(rgb)
-
-            if result.multi_hand_landmarks:
-                for hand_landmarks in result.multi_hand_landmarks:
-                    mp_draw.draw_landmarks(
-                        img,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS
-                    )
-                    cv2.putText(
-                        img,
-                        "Hand Detected",
-                        (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (0, 255, 0),
-                        2
-                    )
-
-            return img
-
-        # =========================
-        # CLOUD: Motion Detection
-        # =========================
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
@@ -99,32 +49,52 @@ class GestureDemo(VideoTransformerBase):
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
+        detected = False
+
         for cnt in contours:
             if cv2.contourArea(cnt) < 3000:
                 continue
 
             x, y, w, h = cv2.boundingRect(cnt)
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)
-
-            cv2.putText(
-                img,
-                "Hand Movement Detected",
-                (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 255),
-                2
+            cv2.rectangle(
+                img, (x, y), (x + w, y + h),
+                (0, 255, 255), 2
             )
+            detected = True
 
         self.prev_gray = gray
 
+        # UI Overlay
+        cv2.rectangle(img, (10, 10), (450, 130), (0, 0, 0), -1)
+
+        if detected:
+            cv2.putText(
+                img,
+                "Gesture Detected (Demo)",
+                (20, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2
+            )
+        else:
+            cv2.putText(
+                img,
+                "No Gesture Detected",
+                (20, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2
+            )
+
         cv2.putText(
             img,
-            "Gesture Detection: DEMO MODE",
-            (20, 80),
+            "Cloud-safe demo (motion based)",
+            (20, 100),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 0, 255),
+            0.7,
+            (255, 255, 255),
             2
         )
 
@@ -132,12 +102,15 @@ class GestureDemo(VideoTransformerBase):
 
 
 # =========================================================
-# WebRTC Stream
+# Run WebRTC Stream
 # =========================================================
 webrtc_streamer(
     key="gesture-demo",
-    video_transformer_factory=GestureDemo,
-    media_stream_constraints={"video": True, "audio": False},
+    video_transformer_factory=GestureDemoTransformer,
+    media_stream_constraints={
+        "video": True,
+        "audio": False
+    },
 )
 
-st.success("✅ Webcam active")
+st.success("✅ Webcam active — move your hand in front of the camera")
